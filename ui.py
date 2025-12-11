@@ -3,13 +3,20 @@
 import sys
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
-    QLineEdit, QPushButton, QFileDialog, QTextEdit, QLabel, QSplitter
+    QLineEdit, QPushButton, QFileDialog, QTextEdit, QLabel, QSplitter, QDialog
 )
 from PySide6.QtCore import Qt
 
 from acquisition import run_acquisition, run_matrix_creation, run_scan_full
 from frog_post import run_frog_post
 from config import ACQ_DEFAULTS, FROG_DEFAULTS
+
+from PySide6.QtCore import Signal
+import matplotlib
+matplotlib.use('Qt5Agg')  # or 'Qt6Agg' for PySide6
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas  # PyQt5
+# or: from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas  # PySide6
+from matplotlib.figure import Figure
 
 
 class Logger:
@@ -27,10 +34,14 @@ class Logger:
 
 
 class MainWindow(QWidget):
+    
+    plot_ready = Signal(object, object, object)  # fig, title, description
+    
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Zaber FROG Controller (PyQt)")
         self.init_ui()
+        self.plot_ready.connect(self.display_plot)  # Connect signal
 
     def init_ui(self):
         # ---------- Acquisition form ----------
@@ -247,9 +258,54 @@ class MainWindow(QWidget):
         print("\n=== Running FROG Post-Processing ===")
         try:
             params = self.gather_frog_params()
+            params['window'] = self  # Pass window reference for signals
             run_frog_post(params)
         except Exception as e:
             print(f"Error during FROG post-processing: {e}")
+            
+    def display_plot(self, fig, title, description):
+        """Display matplotlib figure in UI."""
+        # Create scrollable plot area
+        canvas = FigureCanvas(fig)
+        dialog = PlotDialog(fig, title, description, self)
+        dialog.exec()
+
+class PlotDialog(QDialog):
+    def __init__(self, fig, title, description, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setModal(True)
+        self.resize(800, 600)
+        
+        layout = QVBoxLayout()
+        
+        # Plot canvas
+        canvas = FigureCanvas(fig)
+        layout.addWidget(canvas)
+        
+        # Description label
+        label = QLabel(description)
+        label.setWordWrap(True)
+        layout.addWidget(label)
+        
+        # Buttons
+        btn_layout = QHBoxLayout()
+        btn_save = QPushButton("Save PNG")
+        btn_close = QPushButton("Close")
+        btn_save.clicked.connect(self.save_plot)
+        btn_close.clicked.connect(self.reject)
+        btn_layout.addWidget(btn_save)
+        btn_layout.addWidget(btn_close)
+        layout.addLayout(btn_layout)
+        
+        self.setLayout(layout)
+        self.canvas = canvas
+        self.fig = fig
+        
+    def save_plot(self):
+        filename, _ = QFileDialog.getSaveFileName(self, "Save Plot", "", "PNG (*.png)")
+        if filename:
+            self.fig.savefig(filename, dpi=150, bbox_inches='tight')
 
 
 def main():

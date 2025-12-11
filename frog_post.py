@@ -314,6 +314,10 @@ def run_frog_post(params: dict):
     padding_thickness = params["PADDING_THICKNESS"]
     total_dimension = params["TOTAL_DIMENSION"]
 
+    if 'window' in params:
+        global window
+        window = params['window']
+
     save_path = os.path.join(folder, "output")
     if not os.path.exists(save_path):
         os.makedirs(save_path)
@@ -369,6 +373,19 @@ def run_frog_post(params: dict):
                                       cropped_matrix, cropped_op,
                                       title="Intensity (Cropped)", cmap='viridis')
 
+
+    print("Generating cropped matrix plot...")
+    fig_cropped = plt.figure(figsize=(8, 6))
+    delay_edges = np.linspace(cropped_delays[0], cropped_delays[-1], len(cropped_delays) + 1)
+    wave_edges = np.linspace(cropped_wavelengths[0], cropped_wavelengths[-1], len(cropped_wavelengths) + 1)
+    plt.pcolormesh(delay_edges, wave_edges, cropped_matrix, shading='auto', cmap='viridis')
+    plt.colorbar(label='Intensity')
+    plt.xlabel('Delay (fs)')
+    plt.ylabel('Wavelength (nm)')
+    plt.title('Cropped Matrix')
+    window.plot_ready.emit(fig_cropped, "Cropped Matrix", "Intensity map after delay and wavelength cropping")
+    plt.close(fig_cropped)
+
     # 6) Bin to uniform grid
     matrix_uniform, delay_uniform, wavelength_uniform = bin_to_uniform_grid(
         cropped_matrix, cropped_delays, cropped_wavelengths, orig_size, orig_size
@@ -398,6 +415,30 @@ def run_frog_post(params: dict):
 
     # 11) Linecuts
     plot_central_slices(delay_ext, freq_ext, padded_mat, save_path)
+
+    print("Generating linecut plots...")
+    fig_linecuts = plt.figure(figsize=(12, 5))
+
+    # Central row
+    plt.subplot(1, 2, 1)
+    plt.plot(delay_ext, padded_mat[height//2, :], '-b')
+    plt.xlabel('Delay (fs)')
+    plt.ylabel('Intensity')
+    plt.title('Central Row vs Delay')
+    plt.grid(True)
+
+    # Central column  
+    plt.subplot(1, 2, 2)
+    plt.plot(freq_ext, padded_mat[:, width//2], '-r')
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Intensity')
+    plt.title('Central Column vs Frequency')
+    plt.grid(True)
+
+    plt.tight_layout()
+    window.plot_ready.emit(fig_linecuts, "Central Linecuts", 
+                        "Central row (intensity vs delay) and central column (intensity vs frequency)")
+    plt.close(fig_linecuts)
 
     width, height, temp_calib2, spec_calib2, center_wl2 = get_matrix_properties(
         delay_ext, freq_ext
