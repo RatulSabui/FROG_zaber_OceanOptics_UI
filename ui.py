@@ -5,13 +5,14 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
     QLineEdit, QPushButton, QFileDialog, QTextEdit, QLabel, QSplitter, QDialog
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal, QThread, QObject
 from PySide6.QtGui import QTextCursor
 from acquisition import (
     run_acquisition, run_matrix_creation, run_scan_full,
     stage_home, stage_get_status, stage_move_absolute,
     stage_jog, stage_go_midpoint, stage_go_scan_start,
     stage_go_scan_end, stage_stop,
+    # request_acquisition_stop,   # uncomment when you implement stop
 )
 
 from frog_post import run_frog_post
@@ -42,12 +43,34 @@ class Logger:
         pass
 
 
+class AcquisitionWorker(QObject):
+    finished = Signal()
+    error = Signal(str)
+
+    def __init__(self, params, run_func):
+        super().__init__()
+        self.params = params
+        self.run_func = run_func
+
+    def run(self):
+        try:
+            self.run_func(self.params)
+        except Exception as e:
+            self.error.emit(str(e))
+        finally:
+            self.finished.emit()
+
+
 class MainWindow(QWidget):
     
     plot_ready = Signal(object, object, object)  # fig, title, description
     
     def __init__(self):
         super().__init__()
+        self.acq_thread = None
+        self.acq_worker = None
+        self.full_thread = None
+        self.full_worker = None
         self.setWindowTitle("Zaber FROG Controller (PyQt)")
         self.init_ui()
         self.plot_ready.connect(self.display_plot)  # Connect signal
@@ -296,12 +319,42 @@ class MainWindow(QWidget):
     # ---------- button handlers ----------
 
     def handle_run_acq(self):
+        """
         print("\n=== Running Acquisition Only ===")
         try:
             params = self.gather_acq_params()
             run_acquisition(params)
         except Exception as e:
             print(f"Error during acquisition: {e}")
+        """
+        print("\n=== Running Acquisition Only (threaded) ===")
+        try:
+            params = self.gather_acq_params()
+        except Exception as e:
+            print(f"Error gathering acquisition params: {e}")
+            return
+
+        # Disable acquisition buttons during run (optional)
+        # e.g., self.some_acq_button.setEnabled(False)
+
+        self.acq_thread = QThread()
+        self.acq_worker = AcquisitionWorker(params, run_acquisition)
+        self.acq_worker.moveToThread(self.acq_thread)
+
+        self.acq_thread.started.connect(self.acq_worker.run)
+        self.acq_worker.finished.connect(self.acq_thread.quit)
+        self.acq_worker.finished.connect(self.acq_worker.deleteLater)
+        self.acq_thread.finished.connect(self.acq_thread.deleteLater)
+
+        self.acq_worker.error.connect(lambda msg: print(f"Acquisition error: {msg}"))
+        self.acq_worker.finished.connect(self.on_acq_finished)
+
+        self.acq_thread.start()
+        
+    def on_acq_finished(self):
+        print("=== Acquisition finished ===")
+        # Re-enable buttons if you disabled them
+        # self.some_acq_button.setEnabled(True)
 
     def handle_run_matrix(self):
         print("\n=== Running Matrix Creation Only ===")
@@ -312,12 +365,37 @@ class MainWindow(QWidget):
             print(f"Error during matrix creation: {e}")
 
     def handle_run_full(self):
+        """
         print("\n=== Running Acquisition + Matrix ===")
         try:
             params = self.gather_acq_params()
             run_scan_full(params)
         except Exception as e:
             print(f"Error during acquisition + matrix: {e}")
+        """
+        print("\n=== Running Acquisition + Matrix (threaded) ===")
+        try:
+            params = self.gather_acq_params()
+        except Exception as e:
+            print(f"Error gathering acquisition params: {e}")
+            return
+
+        self.full_thread = QThread()
+        self.full_worker = AcquisitionWorker(params, run_scan_full)
+        self.full_worker.moveToThread(self.full_thread)
+
+        self.full_thread.started.connect(self.full_worker.run)
+        self.full_worker.finished.connect(self.full_thread.quit)
+        self.full_worker.finished.connect(self.full_worker.deleteLater)
+        self.full_thread.finished.connect(self.full_thread.deleteLater)
+
+        self.full_worker.error.connect(lambda msg: print(f"Acq+Matrix error: {msg}"))
+        self.full_worker.finished.connect(self.on_full_finished)
+
+        self.full_thread.start()
+
+    def on_full_finished(self):
+        print("=== Acquisition + Matrix finished ===")
 
     def handle_run_frog(self):
         print("\n=== Running FROG Post-Processing ===")

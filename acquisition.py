@@ -166,6 +166,17 @@ def run_matrix_creation(params: dict):
 
 # ===================== ACQUISITION (hardware → CSVs) =====================
 
+_ACQ_STOP_REQUESTED = False
+
+def reset_acquisition_stop_flag():
+    global _ACQ_STOP_REQUESTED
+    _ACQ_STOP_REQUESTED = False
+
+def request_acquisition_stop():
+    global _ACQ_STOP_REQUESTED
+    _ACQ_STOP_REQUESTED = False  # or True if you implement checking in the loop
+
+
 def run_acquisition(params: dict):
     """
     Connects to stage & spectrometer, scans, saves spectra CSVs into SAVE_DIR.
