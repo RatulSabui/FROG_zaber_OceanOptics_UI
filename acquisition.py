@@ -276,6 +276,179 @@ def run_acquisition(params: dict):
 
     print("Acquisition done.")
 
+# ===================== STAGE UTILITIES (MANUAL CONTROL) =====================
+
+def _open_stage(params):
+    """
+    Internal helper: open connection and return (connection, device).
+    Caller must close connection when done.
+    """
+    PORT_NAME = params["PORT_NAME"]
+    BAUD_RATE = params["BAUD_RATE"]
+    DEVICE_ADDRESS = params["DEVICE_ADDRESS"]
+
+    Library.set_log_output(LogOutputMode.OFF)
+    connection = Connection.open_serial_port(PORT_NAME, baud_rate=BAUD_RATE)
+    device = connection.get_device(DEVICE_ADDRESS)
+    return connection, device
+
+
+def stage_home(params):
+    """
+    Home the stage and wait until idle.
+    """
+    print("Stage: homing...")
+    try:
+        connection, device = _open_stage(params)
+    except Exception as e:
+        print(f"Stage: could not connect for home(): {e}")
+        return
+
+    try:
+        device.home()
+        device.wait_until_idle()
+        pos = device.get_position(Units.LENGTH_MILLIMETRES)
+        print(f"Stage: homed, current position = {pos:.4f} mm")
+    except Exception as e:
+        print(f"Stage: error during home(): {e}")
+    finally:
+        connection.close()
+
+
+def stage_get_status(params):
+    """
+    Query current position and state (busy/parked).
+    """
+    print("Stage: querying status...")
+    try:
+        connection, device = _open_stage(params)
+    except Exception as e:
+        print(f"Stage: could not connect for status(): {e}")
+        return None
+
+    try:
+        pos = device.get_position(Units.LENGTH_MILLIMETRES)
+        busy = device.is_busy()
+        parked = False
+        try:
+            parked = device.is_parked()
+        except Exception:
+            # Older firmware may not support is_parked
+            parked = False
+
+        state = []
+        if busy:
+            state.append("MOVING")
+        else:
+            state.append("IDLE")
+        if parked:
+            state.append("PARKED")
+
+        state_str = ", ".join(state)
+        print(f"Stage: position = {pos:.4f} mm, state = {state_str}")
+        return {"position_mm": pos, "is_busy": busy, "is_parked": parked}
+    except Exception as e:
+        print(f"Stage: error during status(): {e}")
+        return None
+    finally:
+        connection.close()
+
+
+def stage_move_absolute(params, pos_mm):
+    """
+    Move stage to an absolute position in mm and wait until idle.
+    """
+    print(f"Stage: moving to absolute position {pos_mm:.4f} mm...")
+    try:
+        connection, device = _open_stage(params)
+    except Exception as e:
+        print(f"Stage: could not connect for move_absolute(): {e}")
+        return
+
+    try:
+        device.move_absolute(pos_mm, Units.LENGTH_MILLIMETRES)
+        device.wait_until_idle()
+        pos = device.get_position(Units.LENGTH_MILLIMETRES)
+        print(f"Stage: move complete, current position = {pos:.4f} mm")
+    except Exception as e:
+        print(f"Stage: error during move_absolute(): {e}")
+    finally:
+        connection.close()
+
+
+def stage_jog(params, delta_mm):
+    """
+    Move stage by a relative amount delta_mm (can be positive or negative).
+    """
+    print(f"Stage: jogging by {delta_mm:+.4f} mm...")
+    try:
+        connection, device = _open_stage(params)
+    except Exception as e:
+        print(f"Stage: could not connect for jog(): {e}")
+        return
+
+    try:
+        device.move_relative(delta_mm, Units.LENGTH_MILLIMETRES)
+        device.wait_until_idle()
+        pos = device.get_position(Units.LENGTH_MILLIMETRES)
+        print(f"Stage: jog complete, current position = {pos:.4f} mm")
+    except Exception as e:
+        print(f"Stage: error during jog(): {e}")
+    finally:
+        connection.close()
+
+
+def stage_go_midpoint(params):
+    """
+    Move to configured midpoint (APPROX_MIDPOINT in mm).
+    """
+    midpoint = float(params["APPROX_MIDPOINT"])
+    print(f"Stage: moving to midpoint {midpoint:.4f} mm...")
+    stage_move_absolute(params, midpoint)
+
+
+def stage_go_scan_start(params):
+    """
+    Move to start of scan range: midpoint - SCAN_DISTANCE_MM/2.
+    """
+    midpoint = float(params["APPROX_MIDPOINT"])
+    scan = float(params["SCAN_DISTANCE_MM"])
+    start_pos = midpoint - scan / 2.0
+    print(f"Stage: moving to scan START at {start_pos:.4f} mm...")
+    stage_move_absolute(params, start_pos)
+
+
+def stage_go_scan_end(params):
+    """
+    Move to end of scan range: midpoint + SCAN_DISTANCE_MM/2.
+    """
+    midpoint = float(params["APPROX_MIDPOINT"])
+    scan = float(params["SCAN_DISTANCE_MM"])
+    end_pos = midpoint + scan / 2.0
+    print(f"Stage: moving to scan END at {end_pos:.4f} mm...")
+    stage_move_absolute(params, end_pos)
+
+
+def stage_stop(params):
+    """
+    Stop ongoing movement (if any).
+    """
+    print("Stage: stop requested...")
+    try:
+        connection, device = _open_stage(params)
+    except Exception as e:
+        print(f"Stage: could not connect for stop(): {e}")
+        return
+
+    try:
+        device.stop(Units.LENGTH_MILLIMETRES)
+        device.wait_until_idle()
+        pos = device.get_position(Units.LENGTH_MILLIMETRES)
+        print(f"Stage: stopped, current position = {pos:.4f} mm")
+    except Exception as e:
+        print(f"Stage: error during stop(): {e}")
+    finally:
+        connection.close()
 
 # ===================== CONVENIENCE: ACQ + MATRIX =====================
 
