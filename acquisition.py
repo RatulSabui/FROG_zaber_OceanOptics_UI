@@ -171,6 +171,9 @@ def run_acquisition(params: dict):
     Connects to stage & spectrometer, scans, saves spectra CSVs into SAVE_DIR.
     Does NOT build the matrix.
     """
+    
+    print("Acquisition params:", params)
+    
     SAVE_DIR = params["SAVE_DIR"]
     PORT_NAME = params["PORT_NAME"]
     BAUD_RATE = params["BAUD_RATE"]
@@ -231,6 +234,9 @@ def run_acquisition(params: dict):
     end_pos = midpoint + SCAN_DISTANCE_MM / 2
     num_steps = int(SCAN_DISTANCE_MM / STEP_SIZE_MM) + 1
 
+    print(f"DEBUG: start_pos={start_pos}, end_pos={end_pos}, "
+          f"steps={num_steps}, step={STEP_SIZE_MM}, scan={SCAN_DISTANCE_MM}")
+
     print(f"Scanning from {start_pos:.2f} mm to {end_pos:.2f} mm in {num_steps} steps.")
     ensure_dir(SAVE_DIR)
 
@@ -290,6 +296,8 @@ def _open_stage(params):
     Library.set_log_output(LogOutputMode.OFF)
     connection = Connection.open_serial_port(PORT_NAME, baud_rate=BAUD_RATE)
     device = connection.get_device(DEVICE_ADDRESS)
+    device_identity = device.identify()
+    print(device_identity)
     return connection, device
 
 
