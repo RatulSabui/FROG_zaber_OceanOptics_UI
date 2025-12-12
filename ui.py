@@ -6,8 +6,14 @@ from PySide6.QtWidgets import (
     QLineEdit, QPushButton, QFileDialog, QTextEdit, QLabel, QSplitter, QDialog
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QTextCursor
+from acquisition import (
+    run_acquisition, run_matrix_creation, run_scan_full,
+    stage_home, stage_get_status, stage_move_absolute,
+    stage_jog, stage_go_midpoint, stage_go_scan_start,
+    stage_go_scan_end, stage_stop,
+)
 
-from acquisition import run_acquisition, run_matrix_creation, run_scan_full
 from frog_post import run_frog_post
 from config import ACQ_DEFAULTS, FROG_DEFAULTS
 
@@ -25,9 +31,12 @@ class Logger:
         self.widget = widget
 
     def write(self, text):
-        self.widget.moveCursor(self.widget.textCursor().End)
+        cursor = self.widget.textCursor()
+        cursor.movePosition(QTextCursor.End)
+        self.widget.setTextCursor(cursor)
         self.widget.insertPlainText(str(text))
         self.widget.ensureCursorVisible()
+
 
     def flush(self):
         pass
@@ -104,6 +113,62 @@ class MainWindow(QWidget):
         acq_layout.addWidget(QLabel("Acquisition + Matrix Parameters"))
         acq_layout.addLayout(acq_form)
         acq_layout.addLayout(acq_buttons)
+        
+                # ---------- Stage control panel ----------
+        self.stage_abs_pos = QLineEdit("0.0")      # absolute target [mm]
+        self.stage_jog_step = QLineEdit("0.05")    # jog step [mm]
+
+        self.stage_status_label = QLabel("Position: n/a, State: n/a")
+        self.stage_status_label.setStyleSheet("color: blue;")
+
+        stage_form = QFormLayout()
+        stage_form.addRow("Abs. position (mm)", self.stage_abs_pos)
+        stage_form.addRow("Jog step (mm)", self.stage_jog_step)
+
+        btn_home = QPushButton("Home")
+        btn_start = QPushButton("Go Start")
+        btn_mid = QPushButton("Go Midpoint")
+        btn_end = QPushButton("Go End")
+        btn_jog_minus = QPushButton("Jog -")
+        btn_jog_plus = QPushButton("Jog +")
+        btn_stop = QPushButton("Stop")
+        btn_status = QPushButton("Get Status")
+        btn_goto = QPushButton("Go To Abs Pos")
+
+        btn_home.clicked.connect(self.handle_stage_home)
+        btn_start.clicked.connect(self.handle_stage_start)
+        btn_mid.clicked.connect(self.handle_stage_mid)
+        btn_end.clicked.connect(self.handle_stage_end)
+        btn_jog_minus.clicked.connect(self.handle_stage_jog_minus)
+        btn_jog_plus.clicked.connect(self.handle_stage_jog_plus)
+        btn_stop.clicked.connect(self.handle_stage_stop)
+        btn_status.clicked.connect(self.handle_stage_status)
+        btn_goto.clicked.connect(self.handle_stage_goto)
+
+        stage_buttons_row1 = QHBoxLayout()
+        stage_buttons_row1.addWidget(btn_home)
+        stage_buttons_row1.addWidget(btn_start)
+        stage_buttons_row1.addWidget(btn_mid)
+        stage_buttons_row1.addWidget(btn_end)
+        stage_buttons_row1.addWidget(btn_goto)
+
+        stage_buttons_row2 = QHBoxLayout()
+        stage_buttons_row2.addWidget(btn_jog_minus)
+        stage_buttons_row2.addWidget(btn_jog_plus)
+        stage_buttons_row2.addWidget(btn_stop)
+        stage_buttons_row2.addWidget(btn_status)
+
+        stage_layout = QVBoxLayout()
+        stage_layout.addWidget(QLabel("Stage Control"))
+        stage_layout.addLayout(stage_form)
+        stage_layout.addLayout(stage_buttons_row1)
+        stage_layout.addLayout(stage_buttons_row2)
+        stage_layout.addWidget(self.stage_status_label)
+
+        # Append stage control below acquisition
+        acq_layout.addSpacing(10)
+        acq_layout.addLayout(stage_layout)
+
 
         # ---------- FROG form ----------
         self.frog_folder = QLineEdit(FROG_DEFAULTS["FOLDER"])
@@ -269,6 +334,108 @@ class MainWindow(QWidget):
         canvas = FigureCanvas(fig)
         dialog = PlotDialog(fig, title, description, self)
         dialog.exec()
+
+
+    ## for manual stage movement
+    
+        # ---------- Stage handlers ----------
+
+    def handle_stage_home(self):
+        print("\n=== Stage: Home ===")
+        try:
+            params = self.gather_acq_params()
+            stage_home(params)
+            self.handle_stage_status()
+        except Exception as e:
+            print(f"Stage home error: {e}")
+
+    def handle_stage_start(self):
+        print("\n=== Stage: Go to Scan START ===")
+        try:
+            params = self.gather_acq_params()
+            stage_go_scan_start(params)
+            self.handle_stage_status()
+        except Exception as e:
+            print(f"Stage start error: {e}")
+
+    def handle_stage_mid(self):
+        print("\n=== Stage: Go to MIDPOINT ===")
+        try:
+            params = self.gather_acq_params()
+            stage_go_midpoint(params)
+            self.handle_stage_status()
+        except Exception as e:
+            print(f"Stage midpoint error: {e}")
+
+    def handle_stage_end(self):
+        print("\n=== Stage: Go to Scan END ===")
+        try:
+            params = self.gather_acq_params()
+            stage_go_scan_end(params)
+            self.handle_stage_status()
+        except Exception as e:
+            print(f"Stage end error: {e}")
+
+    def handle_stage_goto(self):
+        print("\n=== Stage: Go To Absolute Position ===")
+        try:
+            params = self.gather_acq_params()
+            pos = float(self.stage_abs_pos.text())
+            stage_move_absolute(params, pos)
+            self.handle_stage_status()
+        except Exception as e:
+            print(f"Stage goto error: {e}")
+
+
+    def handle_stage_jog_minus(self):
+        print("\n=== Stage: Jog - ===")
+        try:
+            params = self.gather_acq_params()
+            step = float(self.stage_jog_step.text())
+            stage_jog(params, -step)
+            self.handle_stage_status()
+        except Exception as e:
+            print(f"Stage jog- error: {e}")
+
+    def handle_stage_jog_plus(self):
+        print("\n=== Stage: Jog + ===")
+        try:
+            params = self.gather_acq_params()
+            step = float(self.stage_jog_step.text())
+            stage_jog(params, step)
+            self.handle_stage_status()
+        except Exception as e:
+            print(f"Stage jog+ error: {e}")
+
+    def handle_stage_stop(self):
+        print("\n=== Stage: Stop ===")
+        try:
+            params = self.gather_acq_params()
+            stage_stop(params)
+            self.handle_stage_status()
+        except Exception as e:
+            print(f"Stage stop error: {e}")
+
+    def handle_stage_status(self):
+        print("\n=== Stage: Get Status ===")
+        try:
+            params = self.gather_acq_params()
+            status = stage_get_status(params)
+            if status is not None:
+                pos = status["position_mm"]
+                busy = status["is_busy"]
+                parked = status["is_parked"]
+                state_parts = []
+                state_parts.append("MOVING" if busy else "IDLE")
+                if parked:
+                    state_parts.append("PARKED")
+                state_str = ", ".join(state_parts)
+                self.stage_status_label.setText(
+                    f"Position: {pos:.4f} mm, State: {state_str}"
+                )
+        except Exception as e:
+            print(f"Stage status error: {e}")
+
 
 class PlotDialog(QDialog):
     def __init__(self, fig, title, description, parent=None):
