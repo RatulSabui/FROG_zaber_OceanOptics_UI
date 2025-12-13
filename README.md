@@ -1,13 +1,17 @@
-```markdown
 # Zaber FROG Controller
 
 Automated FROG trace acquisition and processing using Zaber stage + Ocean Insight spectrometer.
 
-## Workflow
+## Devices used
 
-1. **Acquire spectra** → Save CSVs  
-2. **Build matrix** → `full_spectrum_data.npz` + diagnostic plots  
-3. **FROG post-process** → `frog_trace.frg` + analysis plots
+1. **Ocean Optics HR4000 Spectrometer** → for capturing the spectrum. Connects to PC via USB A to B connector. 
+2. **Zaber T-LA13A actuator coupled to a TSB60M stage** → for changing the delay value on the non-collinear SHG FROG setup
+
+## Workflow
+1. **Command line start** → Install all the dependencies and run ui.py
+2. **Acquire spectra** → Save CSVs  
+3. **Build matrix** → `full_spectrum_data.npz` + diagnostic plots  
+4. **FROG post-process** → `frog_trace.frg` + analysis plots
 
 ## Code Structure
 
@@ -58,15 +62,17 @@ Automated FROG trace acquisition and processing using Zaber stage + Ocean Insigh
 
 ## Usage
 
-```
+
 # Install deps
 pip install numpy pandas matplotlib scipy zaber_motion seabreeze PySide6
 
 # Run GUI
 python ui.py
-```
+
 
 **Prerequisites**: Zaber Motion Library + SeaBreeze drivers installed on target PC.
-```
 
-Copy-paste this into your `README.md`. It covers the modular structure and workflow clearly.
+Zaber motion driver is easily available. But one much remember that we here are using legacy Binary communication protocols. There are newer ascii communication protocols but they are not compatible with the stage that we have used in our device.
+
+Seabreeze or the ocean view deivers are not readily available online so Zadig has tro be used to install the relevant drivers.
+
